@@ -1,0 +1,14 @@
+{
+  "enabledPlugins": {
+    "claude-md-management@claude-plugins-official": true,
+    "pyright-lsp@claude-plugins-official": true,
+    "ralph-loop@claude-plugins-official": true,
+    "code-simplifier@claude-plugins-official": true,
+    "context7-mcp@custom-plugin-marketplace": true,
+    "code-simplify@custom-plugin-marketplace": true,
+    "thariq-interview@custom-plugin-marketplace": true,
+    "claude-code-notify@custom-plugin-marketplace": true,
+    "self-improve@custom-plugin-marketplace": true,
+    "meta-prompt-generate@custom-plugin-marketplace": true
+  }
+}
