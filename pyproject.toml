@@ -11,6 +11,9 @@ dependencies = [
     "typer>=0.21.1",
 ]
 
+[project.scripts]
+linky = "tools_py.symlink.cli:main"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

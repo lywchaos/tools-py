@@ -9,6 +9,8 @@
     "thariq-interview@custom-plugin-marketplace": true,
     "claude-code-notify@custom-plugin-marketplace": true,
     "self-improve@custom-plugin-marketplace": true,
-    "meta-prompt-generate@custom-plugin-marketplace": true
+    "meta-prompt-generate@custom-plugin-marketplace": true,
+    "skill-creator@claude-plugins-official": true,
+    "code-review@custom-plugin-marketplace": true
   }
 }
