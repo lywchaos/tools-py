@@ -15,6 +15,7 @@ dependencies = [
 [project.scripts]
 linky = "tools_py.symlink.cli:main"
 llm-call = "tools_py.llm_call.cli:main"
+cc-project-init = "tools_py.cc_project_init.cli:main"
 
 [build-system]
 requires = ["hatchling"]
