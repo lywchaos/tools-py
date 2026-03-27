@@ -21,24 +21,15 @@ def _detect_python(root: Path) -> bool:
     return "[project]" in pyproject.read_text()
 
 
-def _detect_node(root: Path) -> bool:
-    return (root / "package.json").exists()
-
-
-def _detect_go(root: Path) -> bool:
-    return (root / "go.mod").exists()
-
-
 ALL_RULES: list[Rule] = [
     Rule(
         name="uv",
         detect=_detect_uv,
         instructions=(
             "## Package Manager: uv\n"
-            "- Use `uv run python` to invoke Python instead of bare `python`\n"
-            "- Use `uv run pytest` to run tests\n"
-            "- Use `uv add <package>` to add dependencies\n"
-            "- Do NOT use `pip install` directly"
+            "uv is used so:\n"
+            "- Use `uv run python` to invoke Python\n"
+            "- Use `uv run python -m <some-module>` to run python module cli tools like pytest\n"
         ),
     ),
     Rule(
@@ -46,25 +37,8 @@ ALL_RULES: list[Rule] = [
         detect=_detect_python,
         instructions=(
             "## Language: Python\n"
-            "- Follow PEP 8 conventions\n"
+            "- Use `typer` when building cli\n"
             "- Use type hints for function signatures"
-        ),
-    ),
-    Rule(
-        name="node",
-        detect=_detect_node,
-        instructions=(
-            "## Language: Node.js\n"
-            "- Check for lockfile (package-lock.json, yarn.lock, pnpm-lock.yaml) to determine package manager"
-        ),
-    ),
-    Rule(
-        name="go",
-        detect=_detect_go,
-        instructions=(
-            "## Language: Go\n"
-            "- Use `go mod tidy` to manage dependencies\n"
-            "- Use `go test ./...` to run tests"
         ),
     ),
 ]
