@@ -18,8 +18,8 @@ for cmd in tmux fzf pgrep; do
 done
 
 # Walk process tree to find a process named "claude" under a given PID.
-# Returns 0 if found, 1 otherwise.
-has_claude_child() {
+# Prints the claude PID to stdout if found, returns 0. Returns 1 otherwise.
+find_claude_pid() {
   local pid=$1 depth=${2:-0}
   (( depth >= 5 )) && return 1
 
@@ -31,9 +31,10 @@ has_claude_child() {
     local comm
     comm=$(ps -p "$child" -o comm= 2>/dev/null) || continue
     if [[ "$comm" == "claude" ]]; then
+      echo "$child"
       return 0
     fi
-    if has_claude_child "$child" $((depth + 1)); then
+    if find_claude_pid "$child" $((depth + 1)); then
       return 0
     fi
   done
@@ -41,13 +42,22 @@ has_claude_child() {
 }
 
 # Collect all tmux panes running claude.
-# Output format: target<TAB>command<TAB>cwd
+# Output format: target<TAB>status<TAB>cwd
 discover_claude_panes() {
   while IFS=' ' read -r target pane_pid cwd; do
-    if has_claude_child "$pane_pid"; then
-      # Shorten home directory to ~
+    local claude_pid
+    if claude_pid=$(find_claude_pid "$pane_pid"); then
       cwd="${cwd/#$HOME/~}"
-      printf '%s\t%s\t%s\n' "$target" "claude" "$cwd"
+      # Check CPU usage to determine working/idle status
+      local cpu
+      cpu=$(ps -p "$claude_pid" -o %cpu= 2>/dev/null | tr -d ' ') || cpu="0.0"
+      local status
+      if awk "BEGIN{exit(${cpu} > 1.0 ? 0 : 1)}"; then
+        status="● working"
+      else
+        status="○ idle"
+      fi
+      printf '%s\t%s\t%s\n' "$target" "$status" "$cwd"
     fi
   done < <(tmux list-panes -a -F '#{session_name}:#{window_index}.#{pane_index} #{pane_pid} #{pane_current_path}')
 }
@@ -63,12 +73,9 @@ selection=$(
   echo "$panes" | \
   column -t -s $'\t' | \
   fzf \
-    --ansi \
     --no-sort \
     --reverse \
-    --header="Claude Sessions (enter: switch, esc: cancel)" \
-    --preview='tmux capture-pane -p -t {1}' \
-    --preview-window=right:60%
+    --header="Claude Sessions (enter: switch, esc: cancel)"
 ) || exit 0
 
 # Extract target (first field)
