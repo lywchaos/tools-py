@@ -62,27 +62,48 @@ discover_claude_panes() {
   done < <(tmux list-panes -a -F '#{session_name}:#{window_index}.#{pane_index} #{pane_pid} #{pane_current_path}')
 }
 
-# Main
-panes=$(discover_claude_panes)
-if [[ -z "$panes" ]]; then
-  echo "No Claude sessions found." >&2
-  exit 0
-fi
-
 fmt_columns() { awk -F'\t' '{printf "%-25s  %-12s  %s\n", $1, $2, $3}'; }
 
 header=$(printf '%s\t%s\t%s' "PANE" "STATUS" "CWD" | fmt_columns)
+header="$header  [auto-refreshes every 10s]"
 
-selection=$(
-  echo "$panes" | \
-  sort -t$'\t' -k2,2 | \
-  fmt_columns | \
-  fzf \
-    --no-sort \
-    --reverse \
-    --preview '' \
-    --header="$header"
-) || exit 0
+tmpfile=$(mktemp)
+trap 'rm -f "$tmpfile"; kill "$timer_pid" 2>/dev/null' EXIT
+
+while true; do
+  panes=$(discover_claude_panes)
+  if [[ -z "$panes" ]]; then
+    echo "No Claude sessions found." >&2
+    exit 0
+  fi
+
+  echo "$panes" | sort -t$'\t' -k2,2 | fmt_columns > "$tmpfile"
+
+  # Run fzf in background so we can kill it after 10s
+  fzf --no-sort --reverse --preview '' --header="$header" < "$tmpfile" > "$tmpfile.out" &
+  fzf_pid=$!
+  (sleep 10 && kill "$fzf_pid" 2>/dev/null) &
+  timer_pid=$!
+
+  set +e
+  wait "$fzf_pid" 2>/dev/null
+  rc=$?
+  set -e
+  kill "$timer_pid" 2>/dev/null
+  wait "$timer_pid" 2>/dev/null 2>&1 || true
+
+  if (( rc == 0 )); then
+    selection=$(cat "$tmpfile.out")
+    rm -f "$tmpfile.out"
+    break
+  elif (( rc == 130 )); then
+    # User pressed Esc
+    rm -f "$tmpfile.out"
+    exit 0
+  fi
+  # Timeout — refresh
+  rm -f "$tmpfile.out"
+done
 
 # Extract target (first field)
 target=$(echo "$selection" | awk '{print $1}')
