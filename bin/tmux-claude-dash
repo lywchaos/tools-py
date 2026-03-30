@@ -69,13 +69,17 @@ if [[ -z "$panes" ]]; then
   exit 0
 fi
 
+header=$(printf '%s\t%s\t%s' "PANE" "STATUS" "CWD" | column -t -s $'\t')
+
 selection=$(
   echo "$panes" | \
+  sort -t$'\t' -k2,2 | \
   column -t -s $'\t' | \
   fzf \
     --no-sort \
     --reverse \
-    --header="Claude Sessions (enter: switch, esc: cancel)"
+    --no-preview \
+    --header="$header"
 ) || exit 0
 
 # Extract target (first field)
