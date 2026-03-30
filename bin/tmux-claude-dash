@@ -69,16 +69,18 @@ if [[ -z "$panes" ]]; then
   exit 0
 fi
 
-header=$(printf '%s\t%s\t%s' "PANE" "STATUS" "CWD" | column -t -s $'\t')
+fmt_columns() { awk -F'\t' '{printf "%-25s  %-12s  %s\n", $1, $2, $3}'; }
+
+header=$(printf '%s\t%s\t%s' "PANE" "STATUS" "CWD" | fmt_columns)
 
 selection=$(
   echo "$panes" | \
   sort -t$'\t' -k2,2 | \
-  column -t -s $'\t' | \
+  fmt_columns | \
   fzf \
     --no-sort \
     --reverse \
-    --no-preview \
+    --preview '' \
     --header="$header"
 ) || exit 0
 
