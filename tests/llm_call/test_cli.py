@@ -101,11 +101,7 @@ class TestBatchProcessing:
         output_dir = tmp_path / "EnglishWords"
         output_dir.mkdir()
 
-        call_count = 0
-
         async def mock_post(*args, **kwargs):
-            nonlocal call_count
-            call_count += 1
             payload = kwargs.get("json", {})
             word = payload["messages"][-1]["content"]
             if word == "bad":

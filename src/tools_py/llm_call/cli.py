@@ -139,14 +139,14 @@ async def _batch(
 ) -> None:
     sem = asyncio.Semaphore(concurrency)
     lock = asyncio.Lock()
-    remaining: set[str] = set(words)
+    remaining: list[str] = list(words)
 
     async def _run(word: str, client: httpx.AsyncClient) -> bool:
         async with sem:
             ok = await process_word(word, model, output_dir, client=client)
         if ok:
             async with lock:
-                remaining.discard(word)
+                remaining.remove(word)
                 if remaining:
                     file.write_text("\n".join(remaining) + "\n")
                 elif file.exists():
