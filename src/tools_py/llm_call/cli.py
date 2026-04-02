@@ -88,10 +88,19 @@ async def process_word(
 
 @app.command()
 def call(
-    prompt: str = typer.Argument(..., help="User prompt to send to the LLM"),
+    prompt: str = typer.Argument(None, help="User prompt to send to the LLM"),
+    file: Path = typer.Option(None, "--file", "-f", help="File with one word per line"),
     model: str = typer.Option("gpt-4o", "--model", "-m", help="Model name to use"),
+    concurrency: int = typer.Option(3, "--concurrency", "-c", help="Max concurrent requests"),
 ):
     """Send a prompt to the LLM and write the response to a file."""
+    if prompt and file:
+        typer.echo("Error: Cannot use both a prompt argument and --file.", err=True)
+        raise typer.Exit(code=1)
+    if not prompt and not file:
+        typer.echo("Error: Provide either a prompt argument or --file.", err=True)
+        raise typer.Exit(code=1)
+
     if not API_BASE:
         typer.echo("Error: MODEL_PROXY_API_BASE is not set.", err=True)
         raise typer.Exit(code=1)
@@ -105,9 +114,52 @@ def call(
         raise typer.Exit(code=1)
 
     output_dir = Path(vault_path) / "EnglishWords"
-    ok = asyncio.run(process_word(prompt, model, output_dir))
-    if not ok:
+
+    if prompt:
+        ok = asyncio.run(process_word(prompt, model, output_dir))
+        if not ok:
+            raise typer.Exit(code=1)
+        return
+
+    # -- Batch mode --
+    if not file.exists():
+        typer.echo(f"Error: File not found: {file}", err=True)
         raise typer.Exit(code=1)
+
+    words = [w for line in file.read_text().splitlines() if (w := line.strip())]
+    if not words:
+        typer.echo("No words found in file.")
+        return
+
+    asyncio.run(_batch(words, model, output_dir, file, concurrency))
+
+
+async def _batch(
+    words: list[str], model: str, output_dir: Path, file: Path, concurrency: int
+) -> None:
+    sem = asyncio.Semaphore(concurrency)
+    lock = asyncio.Lock()
+    remaining: set[str] = set(words)
+
+    async def _run(word: str, client: httpx.AsyncClient) -> bool:
+        async with sem:
+            ok = await process_word(word, model, output_dir, client=client)
+        if ok:
+            async with lock:
+                remaining.discard(word)
+                if remaining:
+                    file.write_text("\n".join(remaining) + "\n")
+                elif file.exists():
+                    file.unlink()
+        return ok
+
+    async with httpx.AsyncClient() as client:
+        results = await asyncio.gather(*[_run(w, client) for w in words])
+
+    success = sum(1 for r in results if r)
+    total = len(words)
+    failed = total - success
+    typer.echo(f"Processed {success}/{total} words. {failed} failed.")
 
 
 def main():

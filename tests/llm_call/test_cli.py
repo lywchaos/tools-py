@@ -65,3 +65,109 @@ class TestProcessWord:
 
         assert result is False
         assert not (tmp_path / "testword.md").exists()
+
+
+class TestBatchProcessing:
+    def test_batch_removes_successful_words(self, tmp_path: Path, env, monkeypatch):
+        from tools_py.llm_call.cli import app
+
+        monkeypatch.setenv("OBSIDIAN_VAULT_PATH", str(tmp_path))
+        words_file = tmp_path / "words.txt"
+        words_file.write_text("alpha\nbeta\n")
+        output_dir = tmp_path / "EnglishWords"
+        output_dir.mkdir()
+
+        with patch("tools_py.llm_call.cli.httpx.AsyncClient") as MockClient:
+            instance = AsyncMock()
+            MockClient.return_value.__aenter__ = AsyncMock(return_value=instance)
+            MockClient.return_value.__aexit__ = AsyncMock(return_value=False)
+            instance.post = AsyncMock(return_value=_ok_response("content"))
+
+            from typer.testing import CliRunner
+            runner = CliRunner()
+            result = runner.invoke(app, ["--file", str(words_file)])
+
+        assert result.exit_code == 0
+        assert "2/2" in result.output
+        # file should be deleted when empty
+        assert not words_file.exists()
+
+    def test_batch_keeps_failed_words(self, tmp_path: Path, env, monkeypatch):
+        from tools_py.llm_call.cli import app
+
+        monkeypatch.setenv("OBSIDIAN_VAULT_PATH", str(tmp_path))
+        words_file = tmp_path / "words.txt"
+        words_file.write_text("good\nbad\n")
+        output_dir = tmp_path / "EnglishWords"
+        output_dir.mkdir()
+
+        call_count = 0
+
+        async def mock_post(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            payload = kwargs.get("json", {})
+            word = payload["messages"][-1]["content"]
+            if word == "bad":
+                raise httpx.RequestError("network down")
+            return _ok_response("content")
+
+        with patch("tools_py.llm_call.cli.httpx.AsyncClient") as MockClient:
+            instance = AsyncMock()
+            MockClient.return_value.__aenter__ = AsyncMock(return_value=instance)
+            MockClient.return_value.__aexit__ = AsyncMock(return_value=False)
+            instance.post = AsyncMock(side_effect=mock_post)
+
+            from typer.testing import CliRunner
+            runner = CliRunner()
+            result = runner.invoke(app, ["--file", str(words_file)])
+
+        assert result.exit_code == 0
+        assert "1/2" in result.output
+        remaining = words_file.read_text().strip().splitlines()
+        assert remaining == ["bad"]
+
+    def test_batch_skips_empty_lines(self, tmp_path: Path, env, monkeypatch):
+        from tools_py.llm_call.cli import app
+
+        monkeypatch.setenv("OBSIDIAN_VAULT_PATH", str(tmp_path))
+        words_file = tmp_path / "words.txt"
+        words_file.write_text("\n  \nword\n\n")
+        output_dir = tmp_path / "EnglishWords"
+        output_dir.mkdir()
+
+        with patch("tools_py.llm_call.cli.httpx.AsyncClient") as MockClient:
+            instance = AsyncMock()
+            MockClient.return_value.__aenter__ = AsyncMock(return_value=instance)
+            MockClient.return_value.__aexit__ = AsyncMock(return_value=False)
+            instance.post = AsyncMock(return_value=_ok_response("content"))
+
+            from typer.testing import CliRunner
+            runner = CliRunner()
+            result = runner.invoke(app, ["--file", str(words_file)])
+
+        assert result.exit_code == 0
+        assert "1/1" in result.output
+
+    def test_mutual_exclusion(self, tmp_path: Path, env, monkeypatch):
+        from tools_py.llm_call.cli import app
+
+        monkeypatch.setenv("OBSIDIAN_VAULT_PATH", str(tmp_path))
+        words_file = tmp_path / "words.txt"
+        words_file.write_text("word\n")
+
+        from typer.testing import CliRunner
+        runner = CliRunner()
+        result = runner.invoke(app, ["hello", "--file", str(words_file)])
+        assert result.exit_code == 1
+        assert "Cannot use both" in result.output
+
+    def test_no_prompt_no_file(self, env, monkeypatch):
+        from tools_py.llm_call.cli import app
+
+        monkeypatch.setenv("OBSIDIAN_VAULT_PATH", "/tmp")
+
+        from typer.testing import CliRunner
+        runner = CliRunner()
+        result = runner.invoke(app, [])
+        assert result.exit_code == 1
