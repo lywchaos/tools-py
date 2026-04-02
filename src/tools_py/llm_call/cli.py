@@ -4,6 +4,7 @@ llm_call.py - Call an LLM API and write the response to a file.
 Uses the OpenAI-compatible chat completions endpoint.
 """
 
+import asyncio
 import os
 from pathlib import Path
 
@@ -33,6 +34,58 @@ SYSTEM_PROMPT = """
 # ───────────────────────────────────────────────────────────────
 
 
+async def process_word(
+    word: str, model: str, output_dir: Path, client: httpx.AsyncClient | None = None
+) -> bool:
+    """Process a single word: call LLM, write output file.
+
+    Returns True on success (including skip-existing), False on failure.
+    """
+    output_file = output_dir / f"{word}.md"
+    if output_file.exists():
+        typer.echo(f"Skipped: {output_file} already exists.")
+        return True
+
+    messages = []
+    if SYSTEM_PROMPT:
+        messages.append({"role": "system", "content": SYSTEM_PROMPT})
+    messages.append({"role": "user", "content": word})
+
+    url = f"{API_BASE.rstrip('/')}/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {API_KEY}",
+        "Content-Type": "application/json",
+    }
+    payload = {"model": model, "messages": messages}
+
+    async def _post(c: httpx.AsyncClient) -> bool:
+        try:
+            resp = await c.post(url, headers=headers, json=payload, timeout=120)
+            resp.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            typer.echo(
+                f"Error [{word}]: API returned {e.response.status_code}: {e.response.text}",
+                err=True,
+            )
+            return False
+        except httpx.RequestError as e:
+            typer.echo(f"Error [{word}]: Request failed: {e}", err=True)
+            return False
+
+        data = resp.json()
+        content = data["choices"][0]["message"]["content"]
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output_file.write_text(f"#fsrs #english\n{content}", encoding="utf-8")
+        typer.echo(f"Written to {output_file}")
+        return True
+
+    if client is not None:
+        return await _post(client)
+
+    async with httpx.AsyncClient() as c:
+        return await _post(c)
+
+
 @app.command()
 def call(
     prompt: str = typer.Argument(..., help="User prompt to send to the LLM"),
@@ -52,45 +105,9 @@ def call(
         raise typer.Exit(code=1)
 
     output_dir = Path(vault_path) / "EnglishWords"
-    output_file = output_dir / f"{prompt}.md"
-
-    if output_file.exists():
-        typer.echo(f"Skipped: {output_file} already exists.")
-        raise typer.Exit(code=0)
-
-    messages = []
-    if SYSTEM_PROMPT:
-        messages.append({"role": "system", "content": SYSTEM_PROMPT})
-    messages.append({"role": "user", "content": prompt})
-
-    url = f"{API_BASE.rstrip('/')}/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {API_KEY}",
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "model": model,
-        "messages": messages,
-    }
-
-    try:
-        resp = httpx.post(url, headers=headers, json=payload, timeout=120)
-        resp.raise_for_status()
-    except httpx.HTTPStatusError as e:
-        typer.echo(
-            f"Error: API returned {e.response.status_code}: {e.response.text}", err=True
-        )
+    ok = asyncio.run(process_word(prompt, model, output_dir))
+    if not ok:
         raise typer.Exit(code=1)
-    except httpx.RequestError as e:
-        typer.echo(f"Error: Request failed: {e}", err=True)
-        raise typer.Exit(code=1)
-
-    data = resp.json()
-    content = data["choices"][0]["message"]["content"]
-
-    output_dir.mkdir(parents=True, exist_ok=True)
-    output_file.write_text(f"#fsrs #english\n{content}", encoding="utf-8")
-    typer.echo(f"Written to {output_file}")
 
 
 def main():
