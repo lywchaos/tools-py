@@ -38,7 +38,7 @@ ALL_RULES: list[Rule] = [
         instructions=(
             "## Language: Python\n"
             "- Use `typer` when building cli\n"
-            "- Use type hints for function signatures"
+            "- Use `pydantic` for data validation models\n"
         ),
     ),
 ]
