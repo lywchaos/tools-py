@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# tmux-claude-dash — fzf-powered dashboard for navigating tmux panes running Claude
+# tmux-claude-dash — fzf-powered dashboard for navigating tmux panes running Claude or Codex
 #
 # Usage:
 #   tmux display-popup -E -w 80% -h 60% "/path/to/tmux-claude-dash"
@@ -17,9 +17,9 @@ for cmd in tmux fzf pgrep; do
   fi
 done
 
-# Walk process tree to find a process named "claude" under a given PID.
-# Prints the claude PID to stdout if found, returns 0. Returns 1 otherwise.
-find_claude_pid() {
+# Walk process tree to find a process named "claude" or "codex" under a given PID.
+# Prints the matching PID to stdout if found, returns 0. Returns 1 otherwise.
+find_agent_pid() {
   local pid=$1 depth=${2:-0}
   (( depth >= 5 )) && return 1
 
@@ -30,27 +30,27 @@ find_claude_pid() {
   for child in $children; do
     local comm
     comm=$(ps -p "$child" -o comm= 2>/dev/null) || continue
-    if [[ "$comm" == "claude" ]]; then
+    if [[ "$comm" == "claude" || "$comm" == "codex" ]]; then
       echo "$child"
       return 0
     fi
-    if find_claude_pid "$child" $((depth + 1)); then
+    if find_agent_pid "$child" $((depth + 1)); then
       return 0
     fi
   done
   return 1
 }
 
-# Collect all tmux panes running claude.
+# Collect all tmux panes running claude or codex.
 # Output format: target<TAB>status<TAB>cwd
-discover_claude_panes() {
+discover_agent_panes() {
   while IFS=' ' read -r target pane_pid cwd; do
-    local claude_pid
-    if claude_pid=$(find_claude_pid "$pane_pid"); then
+    local agent_pid
+    if agent_pid=$(find_agent_pid "$pane_pid"); then
       cwd="${cwd/#$HOME/~}"
       # Check CPU usage to determine working/idle status
       local cpu
-      cpu=$(ps -p "$claude_pid" -o %cpu= 2>/dev/null | tr -d ' ') || cpu="0.0"
+      cpu=$(ps -p "$agent_pid" -o %cpu= 2>/dev/null | tr -d ' ') || cpu="0.0"
       local status
       if awk "BEGIN{exit(${cpu} > 1.0 ? 0 : 1)}"; then
         status="● working"
@@ -63,9 +63,9 @@ discover_claude_panes() {
 }
 
 # Main
-panes=$(discover_claude_panes)
+panes=$(discover_agent_panes)
 if [[ -z "$panes" ]]; then
-  echo "No Claude sessions found." >&2
+  echo "No Claude or Codex sessions found." >&2
   exit 0
 fi
 
