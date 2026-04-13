@@ -10,6 +10,10 @@ class Rule:
     instructions: str
 
 
+def _detect_common(root: Path) -> bool:
+    return True
+
+
 def _detect_uv(root: Path) -> bool:
     return (root / "uv.lock").exists()
 
@@ -22,6 +26,14 @@ def _detect_python(root: Path) -> bool:
 
 
 ALL_RULES: list[Rule] = [
+    Rule(
+        name="common-instructions",
+        detect=_detect_common,
+        instructions=(
+            "## Common instructions\n"
+            "- Never force-add ignored files (for example with `git add -f`) unless the user explicitly asks for that exact behavior.\n"
+        ),
+    ),
     Rule(
         name="uv",
         detect=_detect_uv,
